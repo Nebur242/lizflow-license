@@ -1,12 +1,14 @@
 # @lizflow/license
 
-LizFlow's runtime enforcement package obtains short-lived, signed leases from the LizFlow API. The deployment ID, bootstrap secret, API URL, optional license ID, and LizFlow public key are injected automatically by LizFlow deployments.
+LizFlow's runtime enforcement package obtains short-lived, signed leases from the LizFlow API. LizFlow provides the deployment values in the dashboard; developers add those values to their hosting provider or CI environment and choose the adapter that matches their app.
+
+The package is intentionally explicit. It does not hide the integration or silently modify your workflow. LizFlow verifies that the app is wired correctly by checking runtime lease requests, hostnames, license status, and build attestations.
 
 ## Runtime trust model
 
 The package does not identify a LizFlow app by package name. It identifies the running app by verifying a signed LizFlow lease.
 
-Required runtime values:
+Required server/runtime values:
 
 ```env
 LIZFLOW_API_URL=...
@@ -34,7 +36,28 @@ A lease is accepted only when:
 
 This means the app is allowed to run only when LizFlow has signed a current lease for this exact deployment, optional license, and host.
 
-The package can be published with zero environment values baked in. LizFlow creates and injects these values when it provisions a deployment. Runtime lease requests fail closed and use a 5 second timeout by default.
+The package is published with zero deployment-specific values baked in. Add the values from the LizFlow dashboard to the environment where the package runs. Runtime lease requests fail closed and use a 5 second timeout by default.
+
+## Developer setup contract
+
+1. Create or open a deployment in LizFlow.
+2. Copy the LizFlow-provided environment values into your hosting provider or CI secrets.
+3. Install this package.
+4. Add the server/edge adapter for hard enforcement, or the browser helper for display-only status.
+5. Add the attestation command to your build workflow when using hard runtime enforcement.
+6. Check the LizFlow dashboard for setup health: last lease request, attestation status, hostname match, and license status.
+
+LizFlow should reject invalid or incomplete setup rather than hiding it. For example, leases are denied when the hostname does not match the dashboard deployment URL or when build attestation is required but missing.
+
+## What LizFlow checks
+
+The dashboard/API should make setup problems visible:
+
+- Runtime package connected: has the deployment requested a lease?
+- Build attestation: has the workflow submitted a build fingerprint?
+- Hostname: does the request hostname match the deployment URL in the dashboard?
+- License: is the linked license active or in grace period?
+- Browser status: is the public status helper calling from the expected hostname?
 
 ## Next.js 16+
 
@@ -81,7 +104,7 @@ Good enforcement locations:
 - Vercel middleware
 - Netlify Edge Functions
 - Express or another Node server
-- a LizFlow-managed edge/proxy wrapper
+- an edge/proxy wrapper you configure with LizFlow-provided values
 
 Browser-only code is not a security boundary. React, Vue, Angular, and other static frontend bundles are public once shipped. A browser check can show a warning, hide UI, or create casual friction, but a determined user can patch or bypass it.
 
@@ -180,15 +203,15 @@ const stop = lizflow.watch((status) => {
 
 ## GitHub Actions attestation
 
-Run after the production build and before/after provider deployment:
+Run after the production build and before/after provider deployment. Add these values as GitHub Actions secrets from the LizFlow dashboard:
 
 ```yaml
 - name: Attest LizFlow build
-  run: npx @lizflow/license attest dist
+  run: npx @lizflow/license attest
   env:
-    LIZFLOW_API_URL: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_API_URL }}
-    LIZFLOW_DEPLOYMENT_ID: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_DEPLOYMENT_ID }}
-    LIZFLOW_DEPLOYMENT_SECRET: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_DEPLOYMENT_SECRET }}
+    LIZFLOW_API_URL: ${{ secrets.LIZFLOW_API_URL }}
+    LIZFLOW_DEPLOYMENT_ID: ${{ secrets.LIZFLOW_DEPLOYMENT_ID }}
+    LIZFLOW_DEPLOYMENT_SECRET: ${{ secrets.LIZFLOW_DEPLOYMENT_SECRET }}
 ```
 
 If no build directory is passed, the CLI looks for common output folders such as `dist`, `build`, `.next`, `.output`, `out`, `public`, `www`, and `.vercel/output`. If none are found, it hashes the project root while skipping noisy or sensitive entries such as `.git`, `.env*`, `node_modules`, logs, caches, generated build folders, and package tarballs. Pass a directory explicitly when you know the exact output path:
