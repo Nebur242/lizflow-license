@@ -12,6 +12,17 @@ NPM_TOKEN
 
 The token needs permission to publish `@lizflow/license` to npm.
 
+For signed release tags from GitHub Actions, also add:
+
+```text
+RELEASE_GPG_PRIVATE_KEY
+RELEASE_GPG_PASSPHRASE
+```
+
+`RELEASE_GPG_PRIVATE_KEY` should be an ASCII-armored private key that can sign release tags. `RELEASE_GPG_PASSPHRASE` is the passphrase for that key.
+
+If you want GitHub to show the signed tag as verified, upload the matching public GPG key to the GitHub account that owns the signing identity.
+
 ## Local preflight
 
 Run this before starting a release:
@@ -35,7 +46,7 @@ npm run release:major
 Each command will:
 
 - bump the package version with `npm version`
-- create the matching `vX.Y.Z` git tag
+- create the matching `vX.Y.Z` git tag using your local git/npm signing configuration
 - run tests
 - audit production dependencies
 - publish to npm
@@ -59,7 +70,7 @@ The workflow will:
 - bump `package.json` and `package-lock.json`
 - verify the new version is not already published
 - commit the version bump
-- create an annotated `vX.Y.Z` git tag
+- create and verify a signed `vX.Y.Z` git tag
 - push the commit and tag
 - publish to npm with provenance
 - create a GitHub release with generated notes
