@@ -105,6 +105,12 @@ VITE_LIZFLOW_DEPLOYMENT_ID=...
 VITE_LIZFLOW_API_URL=https://api.lizflow.com/api/v1
 ```
 
+Use the public env prefix required by your framework:
+
+- Vite, React, Vue, SvelteKit: `VITE_LIZFLOW_*`
+- Next.js browser code: `NEXT_PUBLIC_LIZFLOW_*`
+- Angular: use your build-time environment file or generated runtime config
+
 ```ts
 import { createLizFlowBrowserClient } from "@lizflow/license/browser";
 
@@ -190,5 +196,7 @@ If no build directory is passed, the CLI looks for common output folders such as
 ```bash
 npx @lizflow/license attest build
 ```
+
+Manifest hashing uses framed path/content records and rejects symlinks by default, so attestation cannot accidentally follow links outside the project.
 
 The default runtime policy is fail-closed. Use `failMode: 'open'` only for deliberate availability-over-enforcement scenarios.

@@ -53,15 +53,15 @@ Inputs:
 The workflow will:
 
 - install dependencies with `npm ci`
-- bump `package.json` and `package-lock.json`
-- verify the new version is not already published
-- run tests
+- run tests before changing the version
 - audit production dependencies
 - verify package contents
+- bump `package.json` and `package-lock.json`
+- verify the new version is not already published
 - commit the version bump
 - create an annotated `vX.Y.Z` git tag
 - push the commit and tag
-- publish to npm
+- publish to npm with provenance
 - create a GitHub release with generated notes
 
 ## Raw manual fallback

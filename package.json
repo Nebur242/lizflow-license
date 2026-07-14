@@ -40,16 +40,17 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "release:dry-run": "npm test && npm audit --omit=dev && npm publish --dry-run",
-    "release:patch": "npm version patch && npm test && npm audit --omit=dev && npm publish && git push origin HEAD --follow-tags",
-    "release:minor": "npm version minor && npm test && npm audit --omit=dev && npm publish && git push origin HEAD --follow-tags",
-    "release:major": "npm version major && npm test && npm audit --omit=dev && npm publish && git push origin HEAD --follow-tags"
+    "release:patch": "npm test && npm audit --omit=dev && npm publish --dry-run && npm version patch && npm publish && git push origin HEAD --follow-tags",
+    "release:minor": "npm test && npm audit --omit=dev && npm publish --dry-run && npm version minor && npm publish && git push origin HEAD --follow-tags",
+    "release:major": "npm test && npm audit --omit=dev && npm publish --dry-run && npm version major && npm publish && git push origin HEAD --follow-tags"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

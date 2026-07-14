@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -51,6 +52,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Test
+        run: npm test
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+      - name: Verify package contents
+        run: npm pack --dry-run
+
       - name: Bump package version
         id: version
         shell: bash
@@ -75,15 +85,6 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Test
-        run: npm test
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev
-
-      - name: Verify package contents
-        run: npm pack --dry-run
-
       - name: Commit version and create tag
         run: |
           git add package.json package-lock.json
@@ -96,7 +97,7 @@ jobs:
           git push origin "${{ steps.version.outputs.tag }}"
 
       - name: Publish to npm
-        run: npm publish --tag "${{ inputs.npm_tag }}"
+        run: npm publish --provenance --tag "${{ inputs.npm_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

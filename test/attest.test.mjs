@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -60,6 +60,26 @@ test("root attestation ignores noisy and sensitive files", async () => {
   });
 });
 
+test("manifest hash frames paths and content unambiguously", async () => {
+  const first = await hashTempFiles([
+    ["ab", "c"],
+  ]);
+  const second = await hashTempFiles([
+    ["a", "bc"],
+  ]);
+
+  assert.notEqual(first, second);
+});
+
+test("attestation rejects symlinks", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(join(dir, "target.js"), "console.log('target');");
+    await symlink(join(dir, "target.js"), join(dir, "linked.js"));
+
+    await assert.rejects(() => manifestHash("."), /Refusing to attest symlink/);
+  });
+});
+
 async function withTempDir(run) {
   const cwd = process.cwd();
   const dir = await mkdtemp(join(tmpdir(), "lizflow-attest-"));
@@ -70,4 +90,15 @@ async function withTempDir(run) {
     process.chdir(cwd);
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+async function hashTempFiles(files) {
+  let digest;
+  await withTempDir(async (dir) => {
+    for (const [path, content] of files) {
+      await writeFile(join(dir, path), content);
+    }
+    digest = await manifestHash(".");
+  });
+  return digest;
 }

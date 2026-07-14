@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,16 +55,36 @@ export async function manifestHash(root: string) {
       if (shouldExclude(root, relativePath, entry)) {
         continue;
       }
-      const info = await stat(path);
+      const info = await lstat(path);
+      if (info.isSymbolicLink()) {
+        throw new Error(`Refusing to attest symlink: ${relativePath}`);
+      }
       if (info.isDirectory()) await visit(path);
       else {
-        hash.update(relativePath);
-        hash.update(await readFile(path));
+        hashManifestFile(hash, relativePath, await readFile(path));
       }
     }
   }
   await visit(root);
   return `sha256:${hash.digest("hex")}`;
+}
+
+function hashManifestFile(
+  hash: ReturnType<typeof createHash>,
+  path: string,
+  content: Uint8Array,
+) {
+  const pathBytes = Buffer.from(path);
+  const pathLength = Buffer.allocUnsafe(8);
+  const contentLength = Buffer.allocUnsafe(8);
+  pathLength.writeBigUInt64BE(BigInt(pathBytes.byteLength));
+  contentLength.writeBigUInt64BE(BigInt(content.byteLength));
+
+  hash.update("file:v1");
+  hash.update(pathLength);
+  hash.update(pathBytes);
+  hash.update(contentLength);
+  hash.update(content);
 }
 
 export async function main() {
