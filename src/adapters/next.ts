@@ -1,10 +1,15 @@
-import { LizFlowLicenseOptions, createLizFlowGuard } from "../index.js";
+import {
+  LizFlowLicenseOptions,
+  createLizFlowChecker,
+  licenseDeniedResponse,
+} from "../index.js";
 
 export function withLizFlowLicense(options: LizFlowLicenseOptions = {}) {
-  const guard = createLizFlowGuard(options);
+  const check = createLizFlowChecker(options);
   return async function lizFlowProxy(
     request: Request,
   ): Promise<Response | undefined> {
-    return guard(request);
+    const decision = await check(request);
+    return decision.allowed ? undefined : licenseDeniedResponse(decision);
   };
 }

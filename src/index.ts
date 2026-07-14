@@ -318,28 +318,11 @@ export function createLizFlowChecker(options: LizFlowLicenseOptions = {}) {
   };
 }
 
-export function createLizFlowGuard(options: LizFlowLicenseOptions = {}) {
-  const check = createLizFlowChecker(options);
-  return async function guardLizFlowRequest(
-    request?: LizFlowRequestLike,
-  ): Promise<Response | undefined> {
-    const decision = await check(request);
-    return decision.allowed ? undefined : licenseDeniedResponse(decision);
-  };
-}
-
 export async function checkLizFlowRequest(
   request?: LizFlowRequestLike,
   options: LizFlowLicenseOptions = {},
 ): Promise<LicenseDecision> {
   return createLizFlowChecker(options)(request);
-}
-
-export async function guardLizFlowRequest(
-  request?: LizFlowRequestLike,
-  options: LizFlowLicenseOptions = {},
-): Promise<Response | undefined> {
-  return createLizFlowGuard(options)(request);
 }
 
 export function licenseStatusFromDecision(

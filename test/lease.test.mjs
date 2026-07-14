@@ -5,7 +5,6 @@ import test from "node:test";
 import {
   LizFlowLicenseClient,
   createLizFlowChecker,
-  createLizFlowGuard,
   hostnameFromRequest,
   verifyLease,
 } from "../dist/index.js";
@@ -198,26 +197,25 @@ test("generic checker extracts hostnames from standard Request objects", async (
   assert.equal(decision.allowed, true);
 });
 
-test("generic guard returns undefined for allowed requests", async () => {
+test("generic checker allows developers to continue valid requests explicitly", async () => {
   const fixture = signedLease({ hostname: "example.com" });
-  const guard = createLizFlowGuard(optionsFor(fixture));
+  const check = createLizFlowChecker(optionsFor(fixture));
 
-  const response = await guard({ headers: { host: "example.com:3000" } });
+  const decision = await check({ headers: { host: "example.com:3000" } });
 
-  assert.equal(response, undefined);
+  assert.equal(decision.allowed, true);
 });
 
-test("generic guard returns a denial response for invalid requests", async () => {
+test("generic checker lets developers handle denied requests explicitly", async () => {
   const fixture = signedLease({ hostname: "licensed.example.com" });
-  const guard = createLizFlowGuard(optionsFor(fixture));
+  const check = createLizFlowChecker(optionsFor(fixture));
 
-  const response = await guard({ headers: { host: "other.example.com" } });
+  const decision = await check({ headers: { host: "other.example.com" } });
 
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), {
-    error: "LIZFLOW_LICENSE_UNAVAILABLE",
-    message: "Lease belongs to another hostname",
-  });
+  assert.equal(decision.allowed, false);
+  assert.equal(decision.status, 503);
+  assert.equal(decision.code, "LIZFLOW_LICENSE_UNAVAILABLE");
+  assert.equal(decision.message, "Lease belongs to another hostname");
 });
 
 test("hostnameFromRequest supports url, hostname, and host header inputs", () => {

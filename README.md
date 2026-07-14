@@ -29,9 +29,9 @@ LIZFLOW_FETCH_TIMEOUT_MS=5000
 You can use different secret names in your host if you prefer. In that case, pass values explicitly:
 
 ```ts
-import { createLizFlowGuard } from "@lizflow/license";
+import { LizFlowLicenseClient } from "@lizflow/license";
 
-const lizflowGuard = createLizFlowGuard({
+const lizflow = new LizFlowLicenseClient({
   apiUrl: process.env.MY_LIZFLOW_API_URL,
   deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
   deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
@@ -59,7 +59,7 @@ The package is published with zero deployment-specific values baked in. Add the 
 1. Create or open a deployment in LizFlow.
 2. Copy the LizFlow-provided environment values into your hosting provider or CI secrets.
 3. Install this package.
-4. Add the generic server/edge guard where your app receives requests, or use an optional adapter if it fits your framework.
+4. Add an explicit license check where your app receives requests, or use an optional adapter if it fits your framework.
 5. Add the attestation command to your build workflow when you want build provenance warnings to clear.
 6. Check the LizFlow dashboard for setup health: last lease request, attestation status, hostname match, and license status.
 
@@ -77,22 +77,35 @@ The dashboard/API should make setup problems visible:
 
 ## Generic server/edge usage
 
-The simplest integration is a guard function. It accepts a standard `Request`, a URL string, or a small object with `url`, `hostname`, or `headers`. If the license is valid, it returns `undefined`. If LizFlow denies the request, it returns a JSON `Response` that you can return immediately.
+The generic integration is intentionally explicit. You ask LizFlow for a decision, inspect the result, then decide what your app should do.
 
 ```ts
-import { createLizFlowGuard } from "@lizflow/license";
+import { LizFlowLicenseClient, hostnameFromRequest } from "@lizflow/license";
 
-const lizflowGuard = createLizFlowGuard();
+const lizflow = new LizFlowLicenseClient();
 
 export async function handleRequest(request: Request) {
-  const denied = await lizflowGuard(request);
-  if (denied) return denied;
+  const hostname = hostnameFromRequest(request);
+  const decision = await lizflow.check(hostname);
+
+  if (!decision.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: decision.code,
+        message: decision.message,
+      }),
+      {
+        status: decision.status,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  }
 
   return new Response("Your app response");
 }
 ```
 
-For custom servers, use the checker when you want complete control over the denial behavior:
+If your runtime does not use standard `Request` objects, use `createLizFlowChecker`. It accepts a URL string or an object with `url`, `hostname`, or `headers`.
 
 ```ts
 import { createLizFlowChecker } from "@lizflow/license";
@@ -124,7 +137,7 @@ LizFlow compares that hostname to the deployment URL configured in the dashboard
 
 ## Optional framework wrappers
 
-These wrappers are only convenience helpers. They all call the generic guard/checker above, so developers can skip them and wire LizFlow manually.
+These wrappers are only convenience helpers. They all call the generic checker above, so developers can skip them and wire LizFlow manually.
 
 ## Next.js 16+
 
