@@ -590,6 +590,17 @@ Run after the production build and before/after provider deployment. Add these v
     LIZFLOW_DEPLOYMENT_SECRET: ${{ secrets.LIZFLOW_DEPLOYMENT_SECRET }}
 ```
 
+The workflow secret names are yours. The CLI reads `LIZFLOW_API_URL`, `LIZFLOW_DEPLOYMENT_ID`, and `LIZFLOW_DEPLOYMENT_SECRET` at runtime, so map your own secret names into those env keys:
+
+```yaml
+- name: Attest LizFlow build
+  run: npx @lizflow/license attest
+  env:
+    LIZFLOW_API_URL: ${{ secrets.MY_LIZFLOW_API_URL }}
+    LIZFLOW_DEPLOYMENT_ID: ${{ secrets.MY_PRODUCT_DEPLOYMENT_ID }}
+    LIZFLOW_DEPLOYMENT_SECRET: ${{ secrets.MY_PRODUCT_DEPLOYMENT_SECRET }}
+```
+
 If no build directory is passed, the CLI looks for common output folders such as `dist`, `build`, `.next`, `.output`, `out`, `public`, `www`, and `.vercel/output`. If none are found, it hashes the project root while skipping noisy or sensitive entries such as `.git`, `.env*`, `node_modules`, logs, caches, generated build folders, and package tarballs. Pass a directory explicitly when you know the exact output path:
 
 ```bash
