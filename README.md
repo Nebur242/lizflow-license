@@ -241,6 +241,178 @@ export default async function middleware(request: Request) {
 }
 ```
 
+## HTTP API for non-JavaScript runtimes
+
+Projects that do not use JavaScript can implement the same flow directly against the LizFlow HTTP API. The package is not required.
+
+Current API version: `v1`. The base URL should include `/api/v1`.
+
+Use these server-side values:
+
+```env
+LIZFLOW_API_URL=https://api.lizflow.com/api/v1
+LIZFLOW_DEPLOYMENT_ID=...
+LIZFLOW_DEPLOYMENT_SECRET=...
+LIZFLOW_LICENSE_PUBLIC_KEY=...
+LIZFLOW_LICENSE_ID=... # optional
+```
+
+### Runtime lease check
+
+Request a lease from your server, edge runtime, middleware, or proxy:
+
+```http
+POST /runtime-entitlements/leases
+content-type: application/json
+x-lizflow-deployment-secret: <deployment secret>
+
+{
+  "deploymentId": "<deployment id>",
+  "hostname": "app.example.com"
+}
+```
+
+Example response:
+
+```json
+{
+  "lease": "<signed JWT>",
+  "expiresAt": "2026-07-14T12:00:00.000Z",
+  "status": "active",
+  "publicKey": "-----BEGIN PUBLIC KEY-----..."
+}
+```
+
+Do not trust the `publicKey` returned in the response for verification. Verify the lease with the public key copied from the LizFlow dashboard, stored in your runtime as `LIZFLOW_LICENSE_PUBLIC_KEY` or your own env name.
+
+The lease is an Ed25519 JWT:
+
+- header `alg` must be `EdDSA`
+- `iss` must be `lizflow`
+- `aud` must be `lizflow-runtime`
+- `exp` must be in the future
+- `sub` must match your deployment ID
+- `userLicenseId` must match your configured license ID, when you use one
+- `hostname` must match the hostname you requested, when you pass one
+
+If any of those checks fail, deny or degrade access according to your app policy.
+
+### Python example
+
+This is intentionally direct: the app passes the hostname, asks LizFlow for a lease, verifies it locally, then decides what to do.
+
+```py
+import os
+import requests
+import jwt
+
+api_url = os.environ["MY_LIZFLOW_API_URL"].rstrip("/")
+deployment_id = os.environ["MY_LIZFLOW_DEPLOYMENT_ID"]
+deployment_secret = os.environ["MY_LIZFLOW_DEPLOYMENT_SECRET"]
+public_key = os.environ["MY_LIZFLOW_PUBLIC_KEY"]
+license_id = os.environ.get("MY_LIZFLOW_LICENSE_ID")
+
+def check_lizflow(hostname: str):
+    response = requests.post(
+        f"{api_url}/runtime-entitlements/leases",
+        headers={
+            "content-type": "application/json",
+            "x-lizflow-deployment-secret": deployment_secret,
+        },
+        json={
+            "deploymentId": deployment_id,
+            "hostname": hostname,
+        },
+        timeout=5,
+    )
+
+    if not response.ok:
+        return {
+            "allowed": False,
+            "status": response.status_code,
+            "message": response.text,
+        }
+
+    lease = response.json()["lease"]
+    claims = jwt.decode(
+        lease,
+        public_key,
+        algorithms=["EdDSA"],
+        audience="lizflow-runtime",
+        issuer="lizflow",
+    )
+
+    if claims["sub"] != deployment_id:
+        raise Exception("Lease belongs to another deployment")
+
+    if license_id and claims.get("userLicenseId") != license_id:
+        raise Exception("Lease belongs to another license")
+
+    if claims.get("hostname") != hostname:
+        raise Exception("Lease belongs to another hostname")
+
+    return {
+        "allowed": True,
+        "claims": claims,
+    }
+```
+
+Use the equivalent Ed25519/JWT verification library in Ruby, Go, PHP, Java, Rust, or any other runtime. The important part is local signature verification with the pinned public key from the dashboard.
+
+### Public browser/status check
+
+For display-only browser status, call the public endpoint with public values:
+
+```http
+GET /runtime-entitlements/public-status?deploymentId=<deployment id>&hostname=app.example.com
+```
+
+Example response:
+
+```json
+{
+  "allowed": true,
+  "status": "active",
+  "hostname": "app.example.com",
+  "attested": true,
+  "warnings": [],
+  "nextCheckAt": "2026-07-14T12:05:00.000Z"
+}
+```
+
+This endpoint never returns secrets, signed leases, license IDs, entitlement IDs, project IDs, or deployment secrets. It is for display only, not hard enforcement.
+
+### Build attestation API
+
+If you are not using the package CLI, submit build attestations from your own workflow:
+
+```http
+POST /runtime-entitlements/attestations
+content-type: application/json
+x-lizflow-deployment-secret: <deployment secret>
+
+{
+  "deploymentId": "<deployment id>",
+  "commitSha": "<git commit sha>",
+  "manifestHash": "sha256:<build artifact hash>",
+  "workflowRunId": "<ci workflow run id>",
+  "repository": "owner/repository",
+  "environment": "production"
+}
+```
+
+Example response:
+
+```json
+{
+  "accepted": true,
+  "attestationId": "<attestation id>",
+  "deploymentId": "<deployment id>"
+}
+```
+
+Attestation is currently a setup/provenance signal. Missing attestation should show as a warning, not block runtime leases by itself.
+
 ## Server enforcement vs browser display
 
 Real license enforcement must run before the browser receives the app. Use a server, middleware, edge function, or proxy when you need to prevent unlicensed access to the official deployed app.
