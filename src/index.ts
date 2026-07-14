@@ -276,28 +276,6 @@ export function licenseStatusFromDecision(
   };
 }
 
-export async function checkLizFlowLicenseStatus(
-  options: LizFlowLicenseOptions = {},
-  hostname?: string,
-): Promise<LizFlowLicenseStatus> {
-  const client = new LizFlowLicenseClient(options);
-  return licenseStatusFromDecision(await client.check(hostname));
-}
-
-export async function lizFlowLicenseStatusResponse(
-  options: LizFlowLicenseOptions = {},
-  hostname?: string,
-) {
-  const status = await checkLizFlowLicenseStatus(options, hostname);
-  return new Response(JSON.stringify(status), {
-    status: status.allowed ? 200 : status.status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "private, no-store",
-    },
-  });
-}
-
 export async function verifyLease(token: string, publicKeyPem: string) {
   const [header, payload, signature] = token.split(".");
   if (!header || !payload || !signature)

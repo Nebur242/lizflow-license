@@ -255,7 +255,7 @@ Good enforcement locations:
 
 Browser-only code is not a security boundary. React, Vue, Angular, and other static frontend bundles are public once shipped. A browser check can show a warning, hide UI, or create casual friction, but a determined user can patch or bypass it.
 
-For static React, Vue, Angular, or Vite apps, use the browser helper only for display. Do not claim hard enforcement unless the app is served behind a server, edge function, middleware, or proxy check.
+For static React, Vue, Angular, or Vite apps, browser status is only for display. Do not claim hard enforcement unless the app is served behind a server, edge function, middleware, or proxy check.
 
 Never expose these values to browser code:
 
@@ -264,11 +264,11 @@ LIZFLOW_DEPLOYMENT_SECRET
 LIZFLOW_LICENSE_PUBLIC_KEY
 ```
 
-`LIZFLOW_LICENSE_PUBLIC_KEY` is not secret, but it belongs in the trusted runtime path with the verifier. The browser helper does not need it.
+`LIZFLOW_LICENSE_PUBLIC_KEY` is not secret, but it belongs in the trusted runtime path with the verifier. Browser status checks do not need it.
 
 ## Browser status mode
 
-Static frontend apps can use the browser helper for low-cost, display-only status. This mode needs only public deployment metadata:
+Static frontend apps can call LizFlow's public status endpoint for low-cost, display-only status. This mode needs only public deployment metadata:
 
 ```env
 VITE_LIZFLOW_DEPLOYMENT_ID=...
@@ -282,15 +282,22 @@ Use the public env prefix required by your framework:
 - Angular: use your build-time environment file or generated runtime config
 
 ```ts
-import { createLizFlowBrowserClient } from "@lizflow/license/browser";
+const apiUrl = import.meta.env.VITE_LIZFLOW_API_URL;
+const deploymentId = import.meta.env.VITE_LIZFLOW_DEPLOYMENT_ID;
+const hostname = window.location.hostname;
 
-const lizflow = createLizFlowBrowserClient({
-  apiUrl: import.meta.env.VITE_LIZFLOW_API_URL,
-  deploymentId: import.meta.env.VITE_LIZFLOW_DEPLOYMENT_ID,
-  hostname: window.location.hostname,
+const statusUrl = new URL(
+  `${apiUrl.replace(/\/$/, "")}/runtime-entitlements/public-status`,
+);
+statusUrl.searchParams.set("deploymentId", deploymentId);
+statusUrl.searchParams.set("hostname", hostname);
+
+const response = await fetch(statusUrl, {
+  method: "GET",
+  headers: { accept: "application/json" },
 });
 
-const status = await lizflow.getStatus();
+const status = await response.json();
 
 if (!status.allowed) {
   // Show a warning, modal, disabled state, or support link.
@@ -315,22 +322,50 @@ the public license status, then render that status however your app wants.
 
 ```ts
 // app/api/lizflow/license-status/route.ts
-import { lizFlowLicenseStatusResponse } from "@lizflow/license";
+import { LizFlowLicenseClient } from "@lizflow/license";
+
+const lizflow = new LizFlowLicenseClient({
+  apiUrl: process.env.MY_LIZFLOW_API_URL,
+  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
+  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
+  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
+  licenseId: process.env.MY_LIZFLOW_LICENSE_ID,
+});
 
 export async function GET(request: Request) {
-  return lizFlowLicenseStatusResponse({}, new URL(request.url).hostname);
+  const hostname = new URL(request.url).hostname;
+  const decision = await lizflow.check(hostname);
+
+  if (!decision.allowed) {
+    return Response.json(
+      {
+        allowed: false,
+        status: decision.status,
+        code: decision.code,
+        message: decision.message,
+      },
+      { status: decision.status },
+    );
+  }
+
+  return Response.json({
+    allowed: true,
+    status: decision.claims.status,
+    hostname: decision.claims.hostname,
+    attested: decision.claims.attested,
+    expiresAt: new Date(decision.claims.exp * 1000).toISOString(),
+  });
 }
 ```
 
 ```ts
 // Any browser UI
-import { createLizFlowBrowserClient } from "@lizflow/license/browser";
-
-const lizflow = createLizFlowBrowserClient({
-  statusUrl: "/api/lizflow/license-status",
+const response = await fetch("/api/lizflow/license-status", {
+  method: "GET",
+  headers: { accept: "application/json" },
 });
 
-const status = await lizflow.getStatus();
+const status = await response.json();
 
 if (!status.allowed) {
   // Display anything you like: banner, modal, paywall, support link, etc.
@@ -338,14 +373,22 @@ if (!status.allowed) {
 }
 ```
 
-For live UI updates:
+For live UI updates, use your own polling interval:
 
 ```ts
-const stop = lizflow.watch((status) => {
+const timer = window.setInterval(async () => {
+  const response = await fetch("/api/lizflow/license-status", {
+    headers: { accept: "application/json" },
+  });
+  const status = await response.json();
+
   if (status.allowed && status.status === "grace_period") {
     showBillingWarning(status.expiresAt);
   }
-});
+}, 60_000);
+
+// Later, when the component unmounts:
+window.clearInterval(timer);
 ```
 
 ## GitHub Actions attestation
