@@ -282,22 +282,15 @@ Use the public env prefix required by your framework:
 - Angular: use your build-time environment file or generated runtime config
 
 ```ts
-const apiUrl = import.meta.env.VITE_LIZFLOW_API_URL;
-const deploymentId = import.meta.env.VITE_LIZFLOW_DEPLOYMENT_ID;
-const hostname = window.location.hostname;
+import { createLizFlowBrowserClient } from "@lizflow/license/browser";
 
-const statusUrl = new URL(
-  `${apiUrl.replace(/\/$/, "")}/runtime-entitlements/public-status`,
-);
-statusUrl.searchParams.set("deploymentId", deploymentId);
-statusUrl.searchParams.set("hostname", hostname);
-
-const response = await fetch(statusUrl, {
-  method: "GET",
-  headers: { accept: "application/json" },
+const lizflow = createLizFlowBrowserClient({
+  apiUrl: import.meta.env.VITE_LIZFLOW_API_URL,
+  deploymentId: import.meta.env.VITE_LIZFLOW_DEPLOYMENT_ID,
+  hostname: window.location.hostname,
 });
 
-const status = await response.json();
+const status = await lizflow.getStatus();
 
 if (!status.allowed) {
   // Show a warning, modal, disabled state, or support link.
@@ -314,6 +307,12 @@ GET /runtime-entitlements/public-status?deploymentId=...&hostname=...
 The `hostname` must match the deployment URL stored in the user's LizFlow dashboard. If the browser is running on a different host, LizFlow returns `allowed: false`.
 
 The response contains only public state and is cacheable. It does not return secrets, signed leases, license IDs, entitlement IDs, project IDs, or deployment secrets.
+
+The browser client does not enforce access. It only builds the public status request from the values you pass:
+
+```ts
+lizflow.statusUrl();
+```
 
 ## Server-backed frontend status
 
