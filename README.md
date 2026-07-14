@@ -183,7 +183,12 @@ Run after the production build and before/after provider deployment:
     LIZFLOW_API_URL: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_API_URL }}
     LIZFLOW_DEPLOYMENT_ID: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_DEPLOYMENT_ID }}
     LIZFLOW_DEPLOYMENT_SECRET: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_DEPLOYMENT_SECRET }}
-    LIZFLOW_LICENSE_PUBLIC_KEY: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_LICENSE_PUBLIC_KEY }}
+```
+
+If no build directory is passed, the CLI looks for common output folders such as `dist`, `build`, `.next`, `.output`, `out`, `public`, `www`, and `.vercel/output`. If none are found, it hashes the project root while skipping noisy or sensitive entries such as `.git`, `.env*`, `node_modules`, logs, caches, generated build folders, and package tarballs. Pass a directory explicitly when you know the exact output path:
+
+```bash
+npx @lizflow/license attest build
 ```
 
 The default runtime policy is fail-closed. Use `failMode: 'open'` only for deliberate availability-over-enforcement scenarios.

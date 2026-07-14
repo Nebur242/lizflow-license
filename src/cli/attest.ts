@@ -4,6 +4,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const ROOT_DIRECTORY = ".";
 const DEFAULT_BUILD_DIRECTORIES = [
   "dist",
   "build",
@@ -20,17 +21,44 @@ const DEFAULT_BUILD_DIRECTORIES = [
   "build/client",
   ".vercel/output",
 ];
+const EXCLUDED_ROOT_ENTRIES = new Set([
+  ".DS_Store",
+  ".cache",
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.development",
+  ".git",
+  ".github",
+  ".next",
+  ".nuxt",
+  ".output",
+  ".parcel-cache",
+  ".svelte-kit",
+  ".turbo",
+  ".vercel",
+  "coverage",
+  "dist",
+  "logs",
+  "node_modules",
+  "npm-debug.log",
+]);
+const EXCLUDED_ROOT_SUFFIXES = [".log", ".tgz"];
 
-async function manifestHash(root: string) {
+export async function manifestHash(root: string) {
   const hash = createHash("sha256");
   async function visit(directory: string): Promise<void> {
     const entries = (await readdir(directory)).sort();
     for (const entry of entries) {
       const path = join(directory, entry);
+      const relativePath = relative(root, path);
+      if (shouldExclude(root, relativePath, entry)) {
+        continue;
+      }
       const info = await stat(path);
       if (info.isDirectory()) await visit(path);
       else {
-        hash.update(relative(root, path));
+        hash.update(relativePath);
         hash.update(await readFile(path));
       }
     }
@@ -79,11 +107,7 @@ export async function resolveBuildDirectory(requested?: string) {
     }
   }
 
-  throw new Error(
-    `No build output directory found. Tried: ${DEFAULT_BUILD_DIRECTORIES.join(
-      ", ",
-    )}. Pass one explicitly, for example: lizflow-license attest build`,
-  );
+  return ROOT_DIRECTORY;
 }
 
 async function assertDirectory(path: string) {
@@ -98,6 +122,17 @@ async function isDirectory(path: string) {
   } catch {
     return false;
   }
+}
+
+function shouldExclude(root: string, relativePath: string, entry: string) {
+  if (root !== ROOT_DIRECTORY) {
+    return false;
+  }
+  const topLevelEntry = relativePath.split(/[\\/]/)[0] || entry;
+  return (
+    EXCLUDED_ROOT_ENTRIES.has(topLevelEntry) ||
+    EXCLUDED_ROOT_SUFFIXES.some((suffix) => entry.endsWith(suffix))
+  );
 }
 
 function required(name: string) {

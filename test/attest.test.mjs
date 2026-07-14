@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { resolveBuildDirectory } from "../dist/cli/attest.js";
+import { manifestHash, resolveBuildDirectory } from "../dist/cli/attest.js";
 
 test("attest CLI defaults to dist when no build directory is passed", async () => {
   await withTempDir(async (dir) => {
@@ -38,12 +38,25 @@ test("attest CLI honors an explicit build directory", async () => {
   });
 });
 
-test("attest CLI fails clearly when no build output exists", async () => {
+test("attest CLI falls back to the project root when no build output exists", async () => {
   await withTempDir(async () => {
-    await assert.rejects(
-      () => resolveBuildDirectory(),
-      /No build output directory found/,
-    );
+    assert.equal(await resolveBuildDirectory(), ".");
+  });
+});
+
+test("root attestation ignores noisy and sensitive files", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(join(dir, "app.js"), "console.log('app');");
+
+    const firstHash = await manifestHash(".");
+
+    await mkdir(join(dir, "node_modules"));
+    await writeFile(join(dir, "node_modules", "dep.js"), "changed");
+    await writeFile(join(dir, ".env"), "SECRET=changed");
+    await writeFile(join(dir, "debug.log"), "changed");
+    await writeFile(join(dir, "package.tgz"), "changed");
+
+    assert.equal(await manifestHash("."), firstHash);
   });
 });
 
