@@ -438,9 +438,13 @@ LIZFLOW_LICENSE_PUBLIC_KEY
 
 `LIZFLOW_LICENSE_PUBLIC_KEY` is not secret, but it belongs in the trusted runtime path with the verifier. Browser status checks do not need it.
 
-## Browser status mode
+## Front-only apps: React, Vue, Angular, Vite
 
-Static frontend apps can call LizFlow's public status endpoint for low-cost, display-only status. This mode needs only public deployment metadata:
+Front-only apps do not have a trusted server runtime, so they cannot perform hard license enforcement. They can still call LizFlow's public status endpoint for low-cost, display-only status.
+
+Use this for static React, Vue, Angular, Vite, Svelte, or any other browser-only app when you want to show a warning, banner, modal, disabled state, support link, or payment prompt.
+
+This mode needs only public deployment metadata:
 
 ```env
 VITE_LIZFLOW_DEPLOYMENT_ID=...
@@ -452,6 +456,8 @@ Use the public env prefix required by your framework:
 - Vite, React, Vue, SvelteKit: `VITE_LIZFLOW_*`
 - Next.js browser code: `NEXT_PUBLIC_LIZFLOW_*`
 - Angular: use your build-time environment file or generated runtime config
+
+Example for a Vite-style front-only app:
 
 ```ts
 import { createLizFlowBrowserClient } from "@lizflow/license/browser";
