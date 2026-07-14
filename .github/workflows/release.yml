@@ -52,48 +52,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Import GPG signing key
-        id: gpg
-        shell: bash
-        env:
-          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
-          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${RELEASE_GPG_PRIVATE_KEY}" ]; then
-            echo "RELEASE_GPG_PRIVATE_KEY is required for signed release tags" >&2
-            exit 1
-          fi
-
-          if [ -z "${RELEASE_GPG_PASSPHRASE}" ]; then
-            echo "RELEASE_GPG_PASSPHRASE is required for signed release tags" >&2
-            exit 1
-          fi
-
-          mkdir -p ~/.gnupg
-          chmod 700 ~/.gnupg
-          printf '%s' "${RELEASE_GPG_PRIVATE_KEY}" | gpg --batch --import
-
-          KEY_ID="$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^sec/ { print $5; exit }')"
-          if [ -z "${KEY_ID}" ]; then
-            echo "No GPG secret key was imported" >&2
-            exit 1
-          fi
-
-          GPG_WRAPPER="${HOME}/.gnupg/gpg-wrapper"
-          {
-            printf '%s\n' '#!/usr/bin/env bash'
-            printf '%s\n' 'exec gpg --batch --pinentry-mode loopback --passphrase "${RELEASE_GPG_PASSPHRASE}" "$@"'
-          } > "${GPG_WRAPPER}"
-          chmod 700 "${GPG_WRAPPER}"
-
-          git config user.signingkey "${KEY_ID}"
-          git config gpg.program "${GPG_WRAPPER}"
-          git config tag.gpgSign true
-
-          echo "key_id=${KEY_ID}" >> "$GITHUB_OUTPUT"
-
       - name: Test
         run: npm test
 
@@ -131,23 +89,15 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Commit version and create tag
-        env:
-          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+      - name: Commit version
+        id: commit
         run: |
           git add package.json package-lock.json
           git commit -m "chore(release): @lizflow/license v${{ steps.version.outputs.version }}"
-          git tag -s "${{ steps.version.outputs.tag }}" -m "@lizflow/license v${{ steps.version.outputs.version }}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Verify signed tag
-        env:
-          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
-        run: git tag -v "${{ steps.version.outputs.tag }}"
-
-      - name: Push commit and tag
-        run: |
-          git push origin HEAD
-          git push origin "${{ steps.version.outputs.tag }}"
+      - name: Push version commit
+        run: git push origin HEAD
 
       - name: Publish to npm
         run: npm publish --provenance --tag "${{ inputs.npm_tag }}"
@@ -155,8 +105,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "@lizflow/license v${{ steps.version.outputs.version }}"
-          generate_release_notes: true
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --target "${{ steps.commit.outputs.sha }}" \
+            --title "@lizflow/license v${{ steps.version.outputs.version }}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
