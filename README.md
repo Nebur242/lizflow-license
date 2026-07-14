@@ -77,15 +77,27 @@ The dashboard/API should make setup problems visible:
 
 ## Generic server/edge usage
 
-The generic integration is intentionally explicit. You ask LizFlow for a decision, inspect the result, then decide what your app should do.
+The integration is intentionally explicit:
+
+1. Create `LizFlowLicenseClient` with the values you chose to expose in your runtime.
+2. Read the hostname from your request or trusted runtime config.
+3. Call `lizflow.check(hostname)`.
+4. Inspect the decision.
+5. Return, redirect, render, or continue however your app wants.
 
 ```ts
-import { LizFlowLicenseClient, hostnameFromRequest } from "@lizflow/license";
+import { LizFlowLicenseClient } from "@lizflow/license";
 
-const lizflow = new LizFlowLicenseClient();
+const lizflow = new LizFlowLicenseClient({
+  apiUrl: process.env.MY_LIZFLOW_API_URL,
+  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
+  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
+  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
+  licenseId: process.env.MY_LIZFLOW_LICENSE_ID,
+});
 
 export async function handleRequest(request: Request) {
-  const hostname = hostnameFromRequest(request);
+  const hostname = new URL(request.url).hostname;
   const decision = await lizflow.check(hostname);
 
   if (!decision.allowed) {
@@ -96,7 +108,10 @@ export async function handleRequest(request: Request) {
       }),
       {
         status: decision.status,
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "private, no-store",
+        },
       },
     );
   }
@@ -105,68 +120,38 @@ export async function handleRequest(request: Request) {
 }
 ```
 
-If your runtime does not use standard `Request` objects, use `createLizFlowChecker`. It accepts a URL string or an object with `url`, `hostname`, or `headers`.
+LizFlow compares the hostname you pass to the deployment URL configured in the dashboard. The package does not decide which hostname is trustworthy for your infrastructure. If your app is behind a proxy, load balancer, or custom domain layer, choose the hostname from the source your runtime trusts.
 
-```ts
-import { createLizFlowChecker } from "@lizflow/license";
-
-const checkLizFlow = createLizFlowChecker({
-  apiUrl: process.env.MY_LIZFLOW_API_URL,
-  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
-  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
-  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
-});
-
-const decision = await checkLizFlow({
-  headers: { host: "app.example.com" },
-});
-
-if (!decision.allowed) {
-  return new Response("License required", { status: decision.status });
-}
-```
-
-Hostname handling is explicit. The helper extracts hostnames from:
-
-- `new Request("https://app.example.com/path")`
-- `"https://app.example.com/path"`
-- `{ hostname: "app.example.com" }`
-- `{ headers: { host: "app.example.com:443" } }`
-
-LizFlow compares that hostname to the deployment URL configured in the dashboard. If your app is behind a trusted proxy and the public hostname is not available in `host`, pass the hostname yourself from your trusted runtime configuration.
-
-## Use the generic API in different frameworks
+## Use the same API in different frameworks
 
 Every framework uses the same package import:
 
 ```ts
-import {
-  LizFlowLicenseClient,
-  createLizFlowChecker,
-  hostnameFromRequest,
-  licenseDeniedResponse,
-} from "@lizflow/license";
+import { LizFlowLicenseClient } from "@lizflow/license";
 ```
 
-The only thing that changes is where your framework gives you the incoming request and how you continue to the rest of your app.
+Only the request object and continuation behavior change.
 
 ### Next.js 16+
 
 ```ts
 // proxy.ts
-import {
-  LizFlowLicenseClient,
-  hostnameFromRequest,
-  licenseDeniedResponse,
-} from "@lizflow/license";
+import { LizFlowLicenseClient } from "@lizflow/license";
 
-const lizflow = new LizFlowLicenseClient();
+const lizflow = new LizFlowLicenseClient({
+  apiUrl: process.env.MY_LIZFLOW_API_URL,
+  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
+  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
+  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
+  licenseId: process.env.MY_LIZFLOW_LICENSE_ID,
+});
 
 export default async function proxy(request: Request) {
-  const decision = await lizflow.check(hostnameFromRequest(request));
+  const hostname = new URL(request.url).hostname;
+  const decision = await lizflow.check(hostname);
 
   if (!decision.allowed) {
-    return licenseDeniedResponse(decision);
+    return new Response(decision.message, { status: decision.status });
   }
 
   // Returning undefined lets Next.js continue to the requested route.
@@ -179,14 +164,19 @@ For Next.js 15 and earlier, export the same handler from `middleware.ts`.
 ### Node / Express
 
 ```ts
-import { createLizFlowChecker } from "@lizflow/license";
+import { LizFlowLicenseClient } from "@lizflow/license";
 
-const checkLizFlow = createLizFlowChecker();
+const lizflow = new LizFlowLicenseClient({
+  apiUrl: process.env.MY_LIZFLOW_API_URL,
+  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
+  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
+  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
+  licenseId: process.env.MY_LIZFLOW_LICENSE_ID,
+});
 
 app.use(async (req, res, next) => {
-  const decision = await checkLizFlow({
-    headers: req.headers,
-  });
+  const hostname = req.hostname;
+  const decision = await lizflow.check(hostname);
 
   if (decision.allowed) {
     return next();
@@ -202,19 +192,22 @@ app.use(async (req, res, next) => {
 ### Netlify Edge
 
 ```ts
-import {
-  LizFlowLicenseClient,
-  hostnameFromRequest,
-  licenseDeniedResponse,
-} from "@lizflow/license";
+import { LizFlowLicenseClient } from "@lizflow/license";
 
-const lizflow = new LizFlowLicenseClient();
+const lizflow = new LizFlowLicenseClient({
+  apiUrl: process.env.MY_LIZFLOW_API_URL,
+  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
+  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
+  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
+  licenseId: process.env.MY_LIZFLOW_LICENSE_ID,
+});
 
 export default async function lizflowEdge(request: Request, context: any) {
-  const decision = await lizflow.check(hostnameFromRequest(request));
+  const hostname = new URL(request.url).hostname;
+  const decision = await lizflow.check(hostname);
 
   if (!decision.allowed) {
-    return licenseDeniedResponse(decision);
+    return new Response(decision.message, { status: decision.status });
   }
 
   return context.next();
@@ -226,19 +219,22 @@ export const config = { path: "/*" };
 ### Vercel middleware
 
 ```ts
-import {
-  LizFlowLicenseClient,
-  hostnameFromRequest,
-  licenseDeniedResponse,
-} from "@lizflow/license";
+import { LizFlowLicenseClient } from "@lizflow/license";
 
-const lizflow = new LizFlowLicenseClient();
+const lizflow = new LizFlowLicenseClient({
+  apiUrl: process.env.MY_LIZFLOW_API_URL,
+  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
+  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
+  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
+  licenseId: process.env.MY_LIZFLOW_LICENSE_ID,
+});
 
 export default async function middleware(request: Request) {
-  const decision = await lizflow.check(hostnameFromRequest(request));
+  const hostname = new URL(request.url).hostname;
+  const decision = await lizflow.check(hostname);
 
   if (!decision.allowed) {
-    return licenseDeniedResponse(decision);
+    return new Response(decision.message, { status: decision.status });
   }
 
   return undefined;
@@ -259,7 +255,7 @@ Good enforcement locations:
 
 Browser-only code is not a security boundary. React, Vue, Angular, and other static frontend bundles are public once shipped. A browser check can show a warning, hide UI, or create casual friction, but a determined user can patch or bypass it.
 
-For static React, Vue, Angular, or Vite apps, use the browser helper only for display. Do not claim hard enforcement unless the app is served behind a server, edge function, middleware, or proxy guard.
+For static React, Vue, Angular, or Vite apps, use the browser helper only for display. Do not claim hard enforcement unless the app is served behind a server, edge function, middleware, or proxy check.
 
 Never expose these values to browser code:
 
