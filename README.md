@@ -75,6 +75,64 @@ The dashboard/API should make setup problems visible:
 - License: is the linked license active or in grace period?
 - Browser status: is the public status helper calling from the expected hostname?
 
+## Which integration should you use?
+
+Most LizFlow apps are front-only apps. Start with browser status when your app is a static React, Vue, Angular, Vite, Svelte, or similar frontend. Use server/edge enforcement only when your app has a trusted runtime before the browser receives the app.
+
+## Front-only apps: React, Vue, Angular, Vite
+
+Front-only apps do not have a trusted server runtime, so they cannot perform hard license enforcement. They can still call LizFlow's public status endpoint for low-cost, display-only status.
+
+Use this for static React, Vue, Angular, Vite, Svelte, or any other browser-only app when you want to show a warning, banner, modal, disabled state, support link, or payment prompt.
+
+This mode needs only public deployment metadata:
+
+```env
+VITE_LIZFLOW_DEPLOYMENT_ID=...
+VITE_LIZFLOW_API_URL=https://api.lizflow.com/api/v1
+```
+
+Use the public env prefix required by your framework:
+
+- Vite, React, Vue, SvelteKit: `VITE_LIZFLOW_*`
+- Next.js browser code: `NEXT_PUBLIC_LIZFLOW_*`
+- Angular: use your build-time environment file or generated runtime config
+
+Example for a Vite-style front-only app:
+
+```ts
+import { createLizFlowBrowserClient } from "@lizflow/license/browser";
+
+const lizflow = createLizFlowBrowserClient({
+  apiUrl: import.meta.env.VITE_LIZFLOW_API_URL,
+  deploymentId: import.meta.env.VITE_LIZFLOW_DEPLOYMENT_ID,
+  hostname: window.location.hostname,
+});
+
+const status = await lizflow.getStatus();
+
+if (!status.allowed) {
+  // Show a warning, modal, disabled state, or support link.
+  console.log(status.message);
+}
+```
+
+This calls LizFlow's public status endpoint:
+
+```text
+GET /runtime-entitlements/public-status?deploymentId=...&hostname=...
+```
+
+The `hostname` must match the deployment URL stored in the user's LizFlow dashboard. If the browser is running on a different host, LizFlow returns `allowed: false`.
+
+The response contains only public state and is cacheable. It does not return secrets, signed leases, license IDs, entitlement IDs, project IDs, or deployment secrets.
+
+The browser client does not enforce access. It only builds the public status request from the values you pass:
+
+```ts
+lizflow.statusUrl();
+```
+
 ## Generic server/edge usage
 
 The integration is intentionally explicit:
@@ -437,60 +495,6 @@ LIZFLOW_LICENSE_PUBLIC_KEY
 ```
 
 `LIZFLOW_LICENSE_PUBLIC_KEY` is not secret, but it belongs in the trusted runtime path with the verifier. Browser status checks do not need it.
-
-## Front-only apps: React, Vue, Angular, Vite
-
-Front-only apps do not have a trusted server runtime, so they cannot perform hard license enforcement. They can still call LizFlow's public status endpoint for low-cost, display-only status.
-
-Use this for static React, Vue, Angular, Vite, Svelte, or any other browser-only app when you want to show a warning, banner, modal, disabled state, support link, or payment prompt.
-
-This mode needs only public deployment metadata:
-
-```env
-VITE_LIZFLOW_DEPLOYMENT_ID=...
-VITE_LIZFLOW_API_URL=https://api.lizflow.com/api/v1
-```
-
-Use the public env prefix required by your framework:
-
-- Vite, React, Vue, SvelteKit: `VITE_LIZFLOW_*`
-- Next.js browser code: `NEXT_PUBLIC_LIZFLOW_*`
-- Angular: use your build-time environment file or generated runtime config
-
-Example for a Vite-style front-only app:
-
-```ts
-import { createLizFlowBrowserClient } from "@lizflow/license/browser";
-
-const lizflow = createLizFlowBrowserClient({
-  apiUrl: import.meta.env.VITE_LIZFLOW_API_URL,
-  deploymentId: import.meta.env.VITE_LIZFLOW_DEPLOYMENT_ID,
-  hostname: window.location.hostname,
-});
-
-const status = await lizflow.getStatus();
-
-if (!status.allowed) {
-  // Show a warning, modal, disabled state, or support link.
-  console.log(status.message);
-}
-```
-
-This calls LizFlow's public status endpoint:
-
-```text
-GET /runtime-entitlements/public-status?deploymentId=...&hostname=...
-```
-
-The `hostname` must match the deployment URL stored in the user's LizFlow dashboard. If the browser is running on a different host, LizFlow returns `allowed: false`.
-
-The response contains only public state and is cacheable. It does not return secrets, signed leases, license IDs, entitlement IDs, project IDs, or deployment secrets.
-
-The browser client does not enforce access. It only builds the public status request from the values you pass:
-
-```ts
-lizflow.statusUrl();
-```
 
 ## Server-backed frontend status
 
