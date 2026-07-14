@@ -8,7 +8,7 @@ The package is intentionally explicit. It does not hide the integration or silen
 
 The package does not identify a LizFlow app by package name. It identifies the running app by verifying a signed LizFlow lease.
 
-Required server/runtime values:
+Recommended server/runtime values:
 
 ```env
 LIZFLOW_API_URL=...
@@ -22,6 +22,20 @@ Optional runtime value:
 ```env
 LIZFLOW_LICENSE_ID=...
 LIZFLOW_FETCH_TIMEOUT_MS=5000
+```
+
+You can use different secret names in your host if you prefer. In that case, pass values explicitly:
+
+```ts
+import { withLizFlowLicense } from "@lizflow/license/next";
+
+export default withLizFlowLicense({
+  apiUrl: process.env.MY_LIZFLOW_API_URL,
+  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
+  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
+  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
+  licenseId: process.env.MY_LIZFLOW_LICENSE_ID,
+});
 ```
 
 On each check, the package sends the deployment ID and deployment secret to LizFlow. LizFlow returns a short-lived Ed25519-signed lease. The package verifies that lease with the pinned `LIZFLOW_LICENSE_PUBLIC_KEY`; it does not trust a public key returned by the lease response.
@@ -44,17 +58,17 @@ The package is published with zero deployment-specific values baked in. Add the 
 2. Copy the LizFlow-provided environment values into your hosting provider or CI secrets.
 3. Install this package.
 4. Add the server/edge adapter for hard enforcement, or the browser helper for display-only status.
-5. Add the attestation command to your build workflow when using hard runtime enforcement.
+5. Add the attestation command to your build workflow when you want build provenance warnings to clear.
 6. Check the LizFlow dashboard for setup health: last lease request, attestation status, hostname match, and license status.
 
-LizFlow should reject invalid or incomplete setup rather than hiding it. For example, leases are denied when the hostname does not match the dashboard deployment URL or when build attestation is required but missing.
+LizFlow should reject invalid runtime identity rather than hiding it. For example, leases are denied when the hostname does not match the dashboard deployment URL. Missing build attestation should appear as a dashboard/package warning, not as a hard runtime block.
 
 ## What LizFlow checks
 
 The dashboard/API should make setup problems visible:
 
 - Runtime package connected: has the deployment requested a lease?
-- Build attestation: has the workflow submitted a build fingerprint?
+- Build attestation: has the workflow submitted a build fingerprint? If not, show a warning.
 - Hostname: does the request hostname match the deployment URL in the dashboard?
 - License: is the linked license active or in grace period?
 - Browser status: is the public status helper calling from the expected hostname?

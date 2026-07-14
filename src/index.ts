@@ -21,8 +21,14 @@ export type LizFlowLeaseClaims = {
   status: "active" | "grace_period";
   hostname: string | null;
   attested: boolean;
+  warnings?: LizFlowLicenseWarning[];
   iat: number;
   exp: number;
+};
+
+export type LizFlowLicenseWarning = {
+  code: string;
+  message: string;
 };
 
 type LeaseResponse = {
@@ -60,6 +66,8 @@ export type LizFlowPublicLicenseStatus =
       allowed: true;
       status: LizFlowLeaseClaims["status"];
       hostname: string | null;
+      attested?: boolean;
+      warnings?: LizFlowLicenseWarning[];
       nextCheckAt: string;
     }
   | {
@@ -68,6 +76,8 @@ export type LizFlowPublicLicenseStatus =
       code: string;
       message: string;
       hostname: string | null;
+      attested?: boolean;
+      warnings?: LizFlowLicenseWarning[];
       nextCheckAt: string;
     };
 
