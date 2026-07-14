@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createLizFlowBrowserClient } from "../dist/adapters/browser.js";
+import { createLizFlowBrowserClient } from "../dist/browser.js";
 
 test("browser client lets apps fetch and render custom license status", async () => {
   const client = createLizFlowBrowserClient({

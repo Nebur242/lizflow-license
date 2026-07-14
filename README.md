@@ -2,7 +2,7 @@
 
 LizFlow's runtime enforcement package obtains short-lived, signed leases from the LizFlow API. It is framework-agnostic by default: developers decide where the check runs, how environment values are named, and what should happen when a license is denied.
 
-Use it from any JavaScript server, edge function, middleware, proxy, custom framework, or build workflow. The Next.js, Vercel, Netlify, and Node adapters are optional thin wrappers around the same generic API.
+Use it from any JavaScript server, edge function, middleware, proxy, custom framework, or build workflow. The package exports general-purpose primitives, not framework-specific adapters.
 
 The package is intentionally explicit. It does not hide the integration or silently modify your workflow. LizFlow verifies that the app is wired correctly by checking runtime lease requests, hostnames, license status, and build attestations.
 
@@ -59,7 +59,7 @@ The package is published with zero deployment-specific values baked in. Add the 
 1. Create or open a deployment in LizFlow.
 2. Copy the LizFlow-provided environment values into your hosting provider or CI secrets.
 3. Install this package.
-4. Add an explicit license check where your app receives requests, or use an optional adapter if it fits your framework.
+4. Add an explicit license check where your app receives requests.
 5. Add the attestation command to your build workflow when you want build provenance warnings to clear.
 6. Check the LizFlow dashboard for setup health: last lease request, attestation status, hostname match, and license status.
 
@@ -135,44 +135,114 @@ Hostname handling is explicit. The helper extracts hostnames from:
 
 LizFlow compares that hostname to the deployment URL configured in the dashboard. If your app is behind a trusted proxy and the public hostname is not available in `host`, pass the hostname yourself from your trusted runtime configuration.
 
-## Optional framework wrappers
+## Use the generic API in different frameworks
 
-These wrappers are only convenience helpers. They all call the generic checker above, so developers can skip them and wire LizFlow manually.
+Every framework uses the same package import:
 
-## Next.js 16+
+```ts
+import {
+  LizFlowLicenseClient,
+  createLizFlowChecker,
+  hostnameFromRequest,
+  licenseDeniedResponse,
+} from "@lizflow/license";
+```
+
+The only thing that changes is where your framework gives you the incoming request and how you continue to the rest of your app.
+
+### Next.js 16+
 
 ```ts
 // proxy.ts
-export { default } from "./src/lizflow-proxy";
+import {
+  LizFlowLicenseClient,
+  hostnameFromRequest,
+  licenseDeniedResponse,
+} from "@lizflow/license";
 
-// src/lizflow-proxy.ts
-import { withLizFlowLicense } from "@lizflow/license/next";
-export default withLizFlowLicense();
+const lizflow = new LizFlowLicenseClient();
+
+export default async function proxy(request: Request) {
+  const decision = await lizflow.check(hostnameFromRequest(request));
+
+  if (!decision.allowed) {
+    return licenseDeniedResponse(decision);
+  }
+
+  // Returning undefined lets Next.js continue to the requested route.
+  return undefined;
+}
 ```
 
 For Next.js 15 and earlier, export the same handler from `middleware.ts`.
 
-## Node / Express
+### Node / Express
 
 ```ts
-import { lizFlowLicenseMiddleware } from "@lizflow/license/node";
+import { createLizFlowChecker } from "@lizflow/license";
 
-app.use(lizFlowLicenseMiddleware());
+const checkLizFlow = createLizFlowChecker();
+
+app.use(async (req, res, next) => {
+  const decision = await checkLizFlow({
+    headers: req.headers,
+  });
+
+  if (decision.allowed) {
+    return next();
+  }
+
+  res.status(decision.status).json({
+    error: decision.code,
+    message: decision.message,
+  });
+});
 ```
 
-## Netlify Edge
+### Netlify Edge
 
 ```ts
-import { withLizFlowLicense } from "@lizflow/license/netlify";
-export default withLizFlowLicense();
+import {
+  LizFlowLicenseClient,
+  hostnameFromRequest,
+  licenseDeniedResponse,
+} from "@lizflow/license";
+
+const lizflow = new LizFlowLicenseClient();
+
+export default async function lizflowEdge(request: Request, context: any) {
+  const decision = await lizflow.check(hostnameFromRequest(request));
+
+  if (!decision.allowed) {
+    return licenseDeniedResponse(decision);
+  }
+
+  return context.next();
+}
+
 export const config = { path: "/*" };
 ```
 
-## Vercel middleware
+### Vercel middleware
 
 ```ts
-import { lizFlowMiddleware } from "@lizflow/license/vercel";
-export default lizFlowMiddleware();
+import {
+  LizFlowLicenseClient,
+  hostnameFromRequest,
+  licenseDeniedResponse,
+} from "@lizflow/license";
+
+const lizflow = new LizFlowLicenseClient();
+
+export default async function middleware(request: Request) {
+  const decision = await lizflow.check(hostnameFromRequest(request));
+
+  if (!decision.allowed) {
+    return licenseDeniedResponse(decision);
+  }
+
+  return undefined;
+}
 ```
 
 ## Server enforcement vs browser display

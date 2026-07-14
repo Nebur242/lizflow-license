@@ -1,4 +1,4 @@
-import { LizFlowLicenseStatus, LizFlowPublicLicenseStatus } from "../index.js";
+import { LizFlowLicenseStatus, LizFlowPublicLicenseStatus } from "./index.js";
 
 export type LizFlowBrowserStatus =
   | LizFlowLicenseStatus
