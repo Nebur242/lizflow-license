@@ -1,6 +1,8 @@
 # @lizflow/license
 
-LizFlow's runtime enforcement package obtains short-lived, signed leases from the LizFlow API. LizFlow provides the deployment values in the dashboard; developers add those values to their hosting provider or CI environment and choose the adapter that matches their app.
+LizFlow's runtime enforcement package obtains short-lived, signed leases from the LizFlow API. It is framework-agnostic by default: developers decide where the check runs, how environment values are named, and what should happen when a license is denied.
+
+Use it from any JavaScript server, edge function, middleware, proxy, custom framework, or build workflow. The Next.js, Vercel, Netlify, and Node adapters are optional thin wrappers around the same generic API.
 
 The package is intentionally explicit. It does not hide the integration or silently modify your workflow. LizFlow verifies that the app is wired correctly by checking runtime lease requests, hostnames, license status, and build attestations.
 
@@ -27,9 +29,9 @@ LIZFLOW_FETCH_TIMEOUT_MS=5000
 You can use different secret names in your host if you prefer. In that case, pass values explicitly:
 
 ```ts
-import { withLizFlowLicense } from "@lizflow/license/next";
+import { createLizFlowGuard } from "@lizflow/license";
 
-export default withLizFlowLicense({
+const lizflowGuard = createLizFlowGuard({
   apiUrl: process.env.MY_LIZFLOW_API_URL,
   deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
   deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
@@ -57,7 +59,7 @@ The package is published with zero deployment-specific values baked in. Add the 
 1. Create or open a deployment in LizFlow.
 2. Copy the LizFlow-provided environment values into your hosting provider or CI secrets.
 3. Install this package.
-4. Add the server/edge adapter for hard enforcement, or the browser helper for display-only status.
+4. Add the generic server/edge guard where your app receives requests, or use an optional adapter if it fits your framework.
 5. Add the attestation command to your build workflow when you want build provenance warnings to clear.
 6. Check the LizFlow dashboard for setup health: last lease request, attestation status, hostname match, and license status.
 
@@ -72,6 +74,57 @@ The dashboard/API should make setup problems visible:
 - Hostname: does the request hostname match the deployment URL in the dashboard?
 - License: is the linked license active or in grace period?
 - Browser status: is the public status helper calling from the expected hostname?
+
+## Generic server/edge usage
+
+The simplest integration is a guard function. It accepts a standard `Request`, a URL string, or a small object with `url`, `hostname`, or `headers`. If the license is valid, it returns `undefined`. If LizFlow denies the request, it returns a JSON `Response` that you can return immediately.
+
+```ts
+import { createLizFlowGuard } from "@lizflow/license";
+
+const lizflowGuard = createLizFlowGuard();
+
+export async function handleRequest(request: Request) {
+  const denied = await lizflowGuard(request);
+  if (denied) return denied;
+
+  return new Response("Your app response");
+}
+```
+
+For custom servers, use the checker when you want complete control over the denial behavior:
+
+```ts
+import { createLizFlowChecker } from "@lizflow/license";
+
+const checkLizFlow = createLizFlowChecker({
+  apiUrl: process.env.MY_LIZFLOW_API_URL,
+  deploymentId: process.env.MY_LIZFLOW_DEPLOYMENT_ID,
+  deploymentSecret: process.env.MY_LIZFLOW_DEPLOYMENT_SECRET,
+  publicKey: process.env.MY_LIZFLOW_PUBLIC_KEY,
+});
+
+const decision = await checkLizFlow({
+  headers: { host: "app.example.com" },
+});
+
+if (!decision.allowed) {
+  return new Response("License required", { status: decision.status });
+}
+```
+
+Hostname handling is explicit. The helper extracts hostnames from:
+
+- `new Request("https://app.example.com/path")`
+- `"https://app.example.com/path"`
+- `{ hostname: "app.example.com" }`
+- `{ headers: { host: "app.example.com:443" } }`
+
+LizFlow compares that hostname to the deployment URL configured in the dashboard. If your app is behind a trusted proxy and the public hostname is not available in `host`, pass the hostname yourself from your trusted runtime configuration.
+
+## Optional framework wrappers
+
+These wrappers are only convenience helpers. They all call the generic guard/checker above, so developers can skip them and wire LizFlow manually.
 
 ## Next.js 16+
 
@@ -90,6 +143,7 @@ For Next.js 15 and earlier, export the same handler from `middleware.ts`.
 
 ```ts
 import { lizFlowLicenseMiddleware } from "@lizflow/license/node";
+
 app.use(lizFlowLicenseMiddleware());
 ```
 

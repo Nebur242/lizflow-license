@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 import test from "node:test";
 
-import { LizFlowLicenseClient, verifyLease } from "../dist/index.js";
+import {
+  LizFlowLicenseClient,
+  createLizFlowChecker,
+  createLizFlowGuard,
+  hostnameFromRequest,
+  verifyLease,
+} from "../dist/index.js";
 
 function signedLease(overrides = {}, keyPair = generateKeyPairSync("ed25519")) {
   const { privateKey, publicKey } = keyPair;
@@ -47,6 +53,24 @@ function clientFor(fixture, overrides = {}) {
       }),
     ...overrides,
   });
+}
+
+function optionsFor(fixture, overrides = {}) {
+  return {
+    apiUrl: "https://api.lizflow.test",
+    deploymentId: "deployment-test",
+    deploymentSecret: "deployment-secret",
+    licenseId: "license-test",
+    publicKey: fixture.publicKey,
+    fetch: async () =>
+      Response.json({
+        lease: fixture.token,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        status: "active",
+        publicKey: fixture.publicKey,
+      }),
+    ...overrides,
+  };
 }
 
 test("verifies an Ed25519 LizFlow lease", async () => {
@@ -163,4 +187,51 @@ test("client fails closed when the lease request times out", async () => {
   assert.equal(decision.allowed, false);
   assert.equal(decision.status, 503);
   assert.match(decision.message, /aborted/);
+});
+
+test("generic checker extracts hostnames from standard Request objects", async () => {
+  const fixture = signedLease({ hostname: "app.example.com" });
+  const check = createLizFlowChecker(optionsFor(fixture));
+
+  const decision = await check(new Request("https://app.example.com/dashboard"));
+
+  assert.equal(decision.allowed, true);
+});
+
+test("generic guard returns undefined for allowed requests", async () => {
+  const fixture = signedLease({ hostname: "example.com" });
+  const guard = createLizFlowGuard(optionsFor(fixture));
+
+  const response = await guard({ headers: { host: "example.com:3000" } });
+
+  assert.equal(response, undefined);
+});
+
+test("generic guard returns a denial response for invalid requests", async () => {
+  const fixture = signedLease({ hostname: "licensed.example.com" });
+  const guard = createLizFlowGuard(optionsFor(fixture));
+
+  const response = await guard({ headers: { host: "other.example.com" } });
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    error: "LIZFLOW_LICENSE_UNAVAILABLE",
+    message: "Lease belongs to another hostname",
+  });
+});
+
+test("hostnameFromRequest supports url, hostname, and host header inputs", () => {
+  assert.equal(
+    hostnameFromRequest("https://app.example.com/path"),
+    "app.example.com",
+  );
+  assert.equal(hostnameFromRequest({ hostname: "Example.COM." }), "example.com");
+  assert.equal(
+    hostnameFromRequest({ headers: { Host: "example.com:3000" } }),
+    "example.com",
+  );
+  assert.equal(
+    hostnameFromRequest({ headers: { host: "[::1]:3000" } }),
+    "::1",
+  );
 });

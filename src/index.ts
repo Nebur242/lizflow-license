@@ -11,6 +11,20 @@ export type LizFlowLicenseOptions = {
   fetch?: typeof fetch;
 };
 
+export type LizFlowHeadersLike =
+  | Headers
+  | Record<string, string | string[] | number | null | undefined>;
+
+export type LizFlowRequestLike =
+  | Request
+  | URL
+  | string
+  | {
+      url?: string | URL;
+      hostname?: string;
+      headers?: LizFlowHeadersLike;
+    };
+
 export type LizFlowLeaseClaims = {
   iss: "lizflow";
   aud: "lizflow-runtime";
@@ -266,6 +280,68 @@ export function licenseDeniedResponse(
   );
 }
 
+export function hostnameFromRequest(
+  request?: LizFlowRequestLike,
+): string | undefined {
+  if (!request) return undefined;
+
+  if (typeof request === "string" || request instanceof URL) {
+    return normalizeHostname(request) || undefined;
+  }
+
+  if (typeof Request !== "undefined" && request instanceof Request) {
+    return (
+      normalizeHostname(request.url) ||
+      hostnameFromHeaders(request.headers) ||
+      undefined
+    );
+  }
+
+  const requestLike = request as Exclude<
+    LizFlowRequestLike,
+    Request | URL | string
+  >;
+  return (
+    normalizeHostname(requestLike.hostname) ||
+    normalizeHostname(requestLike.url) ||
+    hostnameFromHeaders(requestLike.headers) ||
+    undefined
+  );
+}
+
+export function createLizFlowChecker(options: LizFlowLicenseOptions = {}) {
+  const client = new LizFlowLicenseClient(options);
+  return async function checkLizFlowRequest(
+    request?: LizFlowRequestLike,
+  ): Promise<LicenseDecision> {
+    return client.check(hostnameFromRequest(request));
+  };
+}
+
+export function createLizFlowGuard(options: LizFlowLicenseOptions = {}) {
+  const check = createLizFlowChecker(options);
+  return async function guardLizFlowRequest(
+    request?: LizFlowRequestLike,
+  ): Promise<Response | undefined> {
+    const decision = await check(request);
+    return decision.allowed ? undefined : licenseDeniedResponse(decision);
+  };
+}
+
+export async function checkLizFlowRequest(
+  request?: LizFlowRequestLike,
+  options: LizFlowLicenseOptions = {},
+): Promise<LicenseDecision> {
+  return createLizFlowChecker(options)(request);
+}
+
+export async function guardLizFlowRequest(
+  request?: LizFlowRequestLike,
+  options: LizFlowLicenseOptions = {},
+): Promise<Response | undefined> {
+  return createLizFlowGuard(options)(request);
+}
+
 export function licenseStatusFromDecision(
   decision: LicenseDecision,
 ): LizFlowLicenseStatus {
@@ -358,16 +434,54 @@ function trimSlash(value: string) {
   return value.replace(/\/$/, "");
 }
 
-function normalizeHostname(value?: string) {
+function hostnameFromHeaders(headers?: LizFlowHeadersLike) {
+  const host =
+    headerValue(headers, "host") || headerValue(headers, "x-forwarded-host");
+  return normalizeHostname(host?.split(",")[0]?.trim());
+}
+
+function headerValue(headers: LizFlowHeadersLike | undefined, name: string) {
+  if (!headers) return undefined;
+  if (headers instanceof Headers) return headers.get(name) || undefined;
+
+  const direct = headers[name];
+  if (direct !== undefined && direct !== null) return firstHeaderValue(direct);
+
+  const lowerName = name.toLowerCase();
+  const foundKey = Object.keys(headers).find(
+    (key) => key.toLowerCase() === lowerName,
+  );
+  const value = foundKey ? headers[foundKey] : undefined;
+  return value === undefined || value === null
+    ? undefined
+    : firstHeaderValue(value);
+}
+
+function firstHeaderValue(value: string | string[] | number) {
+  return Array.isArray(value) ? value[0] : String(value);
+}
+
+function normalizeHostname(value?: string | URL) {
   if (!value) return null;
+  if (value instanceof URL) return normalizeHostname(value.hostname);
+
   const stripIpv6Brackets = (hostname: string) =>
     hostname.replace(/^\[/, "").replace(/\]$/, "");
+  const rawValue = value.trim();
   try {
+    const parsed = new URL(rawValue);
+    if (!parsed.hostname) throw new Error("Missing hostname");
     return stripIpv6Brackets(
-      new URL(value).hostname.toLowerCase().replace(/\.$/, ""),
+      parsed.hostname.toLowerCase().replace(/\.$/, ""),
     );
   } catch {
-    return stripIpv6Brackets(value.toLowerCase().replace(/\.$/, ""));
+    try {
+      return stripIpv6Brackets(
+        new URL(`http://${rawValue}`).hostname.toLowerCase().replace(/\.$/, ""),
+      );
+    } catch {
+      return stripIpv6Brackets(rawValue.toLowerCase().replace(/\.$/, ""));
+    }
   }
 }
 
