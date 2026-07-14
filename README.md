@@ -320,7 +320,10 @@ The response contains only public state and is cacheable. It does not return sec
 Do not expose `LIZFLOW_DEPLOYMENT_SECRET` in browser code. Create a small server route that returns
 the public license status, then render that status however your app wants.
 
-In this setup, the LizFlow values are passed to your server route through server-side environment variables. The browser does not pass `deploymentSecret`, `publicKey`, or license values. It only calls your own route.
+This setup has two explicit parts:
+
+- the server route reads the LizFlow values from server-side environment variables
+- the browser calls that server route and renders the JSON it returns
 
 ```ts
 // app/api/lizflow/license-status/route.ts
@@ -362,8 +365,6 @@ export async function GET(request: Request) {
 
 ```ts
 // Any browser UI
-// No LizFlow secrets or runtime values are passed here.
-// The server route above already has them.
 const response = await fetch("/api/lizflow/license-status", {
   method: "GET",
   headers: { accept: "application/json" },
@@ -381,7 +382,6 @@ For live UI updates, use your own polling interval:
 
 ```ts
 const timer = window.setInterval(async () => {
-  // Still no LizFlow values here; this calls your server route.
   const response = await fetch("/api/lizflow/license-status", {
     headers: { accept: "application/json" },
   });
