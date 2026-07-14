@@ -2,6 +2,24 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const DEFAULT_BUILD_DIRECTORIES = [
+  "dist",
+  "build",
+  "www",
+  "wwwroot",
+  ".next",
+  ".output",
+  "out",
+  "public",
+  "storybook-static",
+  "coverage/lcov-report",
+  "dist/browser",
+  "dist/client",
+  "build/client",
+  ".vercel/output",
+];
 
 async function manifestHash(root: string) {
   const hash = createHash("sha256");
@@ -21,12 +39,13 @@ async function manifestHash(root: string) {
   return `sha256:${hash.digest("hex")}`;
 }
 
-async function main() {
+export async function main() {
   const apiUrl = required("LIZFLOW_API_URL").replace(/\/$/, "");
   const deploymentId = required("LIZFLOW_DEPLOYMENT_ID");
   const secret = required("LIZFLOW_DEPLOYMENT_SECRET");
   const args = process.argv.slice(2);
-  const buildDirectory = (args[0] === "attest" ? args[1] : args[0]) || "dist";
+  const requestedBuildDirectory = args[0] === "attest" ? args[1] : args[0];
+  const buildDirectory = await resolveBuildDirectory(requestedBuildDirectory);
   const response = await fetch(`${apiUrl}/runtime-entitlements/attestations`, {
     method: "POST",
     headers: {
@@ -48,15 +67,50 @@ async function main() {
   process.stdout.write(`${JSON.stringify(await response.json())}\n`);
 }
 
+export async function resolveBuildDirectory(requested?: string) {
+  if (requested) {
+    await assertDirectory(requested);
+    return requested;
+  }
+
+  for (const directory of DEFAULT_BUILD_DIRECTORIES) {
+    if (await isDirectory(directory)) {
+      return directory;
+    }
+  }
+
+  throw new Error(
+    `No build output directory found. Tried: ${DEFAULT_BUILD_DIRECTORIES.join(
+      ", ",
+    )}. Pass one explicitly, for example: lizflow-license attest build`,
+  );
+}
+
+async function assertDirectory(path: string) {
+  if (!(await isDirectory(path))) {
+    throw new Error(`Build output directory not found: ${path}`);
+  }
+}
+
+async function isDirectory(path: string) {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function required(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
   return value;
 }
 
-main().catch((error) => {
-  process.stderr.write(
-    `${error instanceof Error ? error.message : String(error)}\n`,
-  );
-  process.exitCode = 1;
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode = 1;
+  });
+}
