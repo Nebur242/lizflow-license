@@ -61,6 +61,10 @@ jobs:
       - name: Verify package contents
         run: npm pack --dry-run
 
+      - name: Verify provenance repository metadata
+        run: |
+          test "$(node -p "require('./package.json').repository?.url")" = "git+https://github.com/Nebur242/lizflow-license.git"
+
       - name: Bump package version
         id: version
         shell: bash
