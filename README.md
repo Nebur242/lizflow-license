@@ -579,18 +579,26 @@ window.clearInterval(timer);
 
 ## GitHub Actions attestation
 
-Run after the production build and before/after provider deployment. Add these values as GitHub Actions secrets from the LizFlow dashboard:
+Run after the production build and before/after provider deployment.
+
+The CLI reads these env keys at runtime:
+
+- `LIZFLOW_API_URL`
+- `LIZFLOW_DEPLOYMENT_ID`
+- `LIZFLOW_DEPLOYMENT_SECRET`
+
+Where the values come from is up to the workflow. If LizFlow generates or runs the workflow, map the values from the LizFlow-provided deployment payload:
 
 ```yaml
 - name: Attest LizFlow build
   run: npx @lizflow/license attest
   env:
-    LIZFLOW_API_URL: ${{ secrets.LIZFLOW_API_URL }}
-    LIZFLOW_DEPLOYMENT_ID: ${{ secrets.LIZFLOW_DEPLOYMENT_ID }}
-    LIZFLOW_DEPLOYMENT_SECRET: ${{ secrets.LIZFLOW_DEPLOYMENT_SECRET }}
+    LIZFLOW_API_URL: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_API_URL }}
+    LIZFLOW_DEPLOYMENT_ID: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_DEPLOYMENT_ID }}
+    LIZFLOW_DEPLOYMENT_SECRET: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_DEPLOYMENT_SECRET }}
 ```
 
-The workflow secret names are yours. The CLI reads `LIZFLOW_API_URL`, `LIZFLOW_DEPLOYMENT_ID`, and `LIZFLOW_DEPLOYMENT_SECRET` at runtime, so map your own secret names into those env keys:
+If the developer owns the workflow outside LizFlow, they can store the LizFlow-provided values under any GitHub secret names and map them into the env keys the CLI reads:
 
 ```yaml
 - name: Attest LizFlow build
