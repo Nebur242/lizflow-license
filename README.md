@@ -4,7 +4,7 @@ LizFlow's runtime enforcement package obtains short-lived, signed leases from th
 
 Use it from any JavaScript server, edge function, middleware, proxy, custom framework, or build workflow. The package exports general-purpose primitives, not framework-specific adapters.
 
-The package is intentionally explicit. It does not hide the integration or silently modify your workflow. LizFlow verifies that the app is wired correctly by checking runtime lease requests, hostnames, license status, and build attestations.
+The package is intentionally explicit. It does not hide the integration or silently modify your workflow. LizFlow verifies that the app is wired correctly by checking runtime lease requests, hostnames, and license status.
 
 ## Runtime trust model
 
@@ -60,17 +60,15 @@ The package is published with zero deployment-specific values baked in. Add the 
 2. Copy the LizFlow-provided environment values into your hosting provider or CI secrets.
 3. Install this package.
 4. Add an explicit license check where your app receives requests.
-5. Add the attestation command to your build workflow when you want build provenance warnings to clear.
-6. Check the LizFlow dashboard for setup health: last lease request, attestation status, hostname match, and license status.
+5. Check the LizFlow dashboard for setup health: last lease request, hostname match, and license status.
 
-LizFlow should reject invalid runtime identity rather than hiding it. For example, leases are denied when the hostname does not match the dashboard deployment URL. Missing build attestation should appear as a dashboard/package warning, not as a hard runtime block.
+LizFlow should reject invalid runtime identity rather than hiding it. For example, leases are denied when the hostname does not match the dashboard deployment URL.
 
 ## What LizFlow checks
 
 The dashboard/API should make setup problems visible:
 
 - Runtime package connected: has the deployment requested a lease?
-- Build attestation: has the workflow submitted a build fingerprint? If not, show a warning.
 - Hostname: does the request hostname match the deployment URL in the dashboard?
 - License: is the linked license active or in grace period?
 - Browser status: is the public status helper calling from the expected hostname?
@@ -432,44 +430,11 @@ Example response:
   "allowed": true,
   "status": "active",
   "hostname": "app.example.com",
-  "attested": true,
-  "warnings": [],
   "nextCheckAt": "2026-07-14T12:05:00.000Z"
 }
 ```
 
 This endpoint never returns secrets, signed leases, license IDs, entitlement IDs, project IDs, or deployment secrets. It is for display only, not hard enforcement.
-
-### Build attestation API
-
-If you are not using the package CLI, submit build attestations from your own workflow:
-
-```http
-POST /runtime-entitlements/attestations
-content-type: application/json
-x-lizflow-deployment-secret: <deployment secret>
-
-{
-  "deploymentId": "<deployment id>",
-  "commitSha": "<git commit sha>",
-  "manifestHash": "sha256:<build artifact hash>",
-  "workflowRunId": "<ci workflow run id>",
-  "repository": "owner/repository",
-  "environment": "production"
-}
-```
-
-Example response:
-
-```json
-{
-  "accepted": true,
-  "attestationId": "<attestation id>",
-  "deploymentId": "<deployment id>"
-}
-```
-
-Attestation is currently a setup/provenance signal. Missing attestation should show as a warning, not block runtime leases by itself.
 
 ## Server enforcement vs browser display
 
@@ -538,7 +503,6 @@ export async function GET(request: Request) {
     allowed: true,
     status: decision.claims.status,
     hostname: decision.claims.hostname,
-    attested: decision.claims.attested,
     expiresAt: new Date(decision.claims.exp * 1000).toISOString(),
   });
 }
@@ -576,45 +540,3 @@ const timer = window.setInterval(async () => {
 // Later, when the component unmounts:
 window.clearInterval(timer);
 ```
-
-## GitHub Actions attestation
-
-Run after the production build and before/after provider deployment.
-
-The CLI reads these env keys at runtime:
-
-- `LIZFLOW_API_URL`
-- `LIZFLOW_DEPLOYMENT_ID`
-- `LIZFLOW_DEPLOYMENT_SECRET`
-
-Where the values come from is up to the workflow. If LizFlow generates or runs the workflow, map the values from the LizFlow-provided deployment payload:
-
-```yaml
-- name: Attest LizFlow build
-  run: npx @lizflow/license attest
-  env:
-    LIZFLOW_API_URL: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_API_URL }}
-    LIZFLOW_DEPLOYMENT_ID: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_DEPLOYMENT_ID }}
-    LIZFLOW_DEPLOYMENT_SECRET: ${{ fromJSON(inputs.DATA).variables.LIZFLOW_DEPLOYMENT_SECRET }}
-```
-
-If the developer owns the workflow outside LizFlow, they can store the LizFlow-provided values under any GitHub secret names and map them into the env keys the CLI reads:
-
-```yaml
-- name: Attest LizFlow build
-  run: npx @lizflow/license attest
-  env:
-    LIZFLOW_API_URL: ${{ secrets.MY_LIZFLOW_API_URL }}
-    LIZFLOW_DEPLOYMENT_ID: ${{ secrets.MY_PRODUCT_DEPLOYMENT_ID }}
-    LIZFLOW_DEPLOYMENT_SECRET: ${{ secrets.MY_PRODUCT_DEPLOYMENT_SECRET }}
-```
-
-If no build directory is passed, the CLI looks for common output folders such as `dist`, `build`, `.next`, `.output`, `out`, `public`, `www`, and `.vercel/output`. If none are found, it hashes the project root while skipping noisy or sensitive entries such as `.git`, `.env*`, `node_modules`, logs, caches, generated build folders, and package tarballs. Pass a directory explicitly when you know the exact output path:
-
-```bash
-npx @lizflow/license attest build
-```
-
-Manifest hashing uses framed path/content records and rejects symlinks by default, so attestation cannot accidentally follow links outside the project.
-
-The default runtime policy is fail-closed. Use `failMode: 'open'` only for deliberate availability-over-enforcement scenarios.
