@@ -1,6 +1,9 @@
 # Release management
 
-`@lizflow/license` is released manually. There is no automatic release on push or merge.
+`@lizflow/license` is released manually. There is no automatic release on push or merge. The GitHub release workflow publishes the same version and built artifacts to both npm and GitHub Packages:
+
+- npm: `@lizflow/license`
+- GitHub Packages: `@nebur242/lizflow-license`
 
 ## One-time setup
 
@@ -11,6 +14,8 @@ NPM_TOKEN
 ```
 
 The token needs permission to publish `@lizflow/license` to npm.
+
+GitHub Packages uses the workflow's built-in `GITHUB_TOKEN`; no additional repository secret is needed. The workflow publishes under the `@nebur242` scope because GitHub Packages requires the package scope to match the GitHub account or organization that owns it.
 
 ## Local preflight
 
@@ -61,11 +66,14 @@ The workflow will:
 - commit the version bump
 - push the version commit
 - publish to npm with provenance
+- publish the same version to GitHub Packages
 - create the `vX.Y.Z` tag and GitHub release with generated notes through GitHub
+
+After the first GitHub Packages publish, set the package visibility and access policy you want on its GitHub package settings page. Consumers need a token with `read:packages` even when the package is public.
 
 ## Raw manual fallback
 
-If you do not want to use the helper scripts:
+If you do not want to use the helper scripts, the following publishes only to npm:
 
 ```bash
 npm version patch

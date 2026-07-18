@@ -25,6 +25,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  packages: write
 
 jobs:
   release:
@@ -103,6 +104,20 @@ jobs:
         run: npm publish --provenance --tag "${{ inputs.npm_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Setup Node for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@nebur242"
+
+      - name: Publish to GitHub Packages
+        run: |
+          npm pkg set name="@nebur242/lizflow-license"
+          npm publish --tag "${{ inputs.npm_tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
 
       - name: Create GitHub release
         run: |

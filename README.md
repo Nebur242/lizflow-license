@@ -54,6 +54,26 @@ This means the app is allowed to run only when LizFlow has signed a current leas
 
 The package is published with zero deployment-specific values baked in. Add the values from the LizFlow dashboard to the environment where the package runs. Runtime lease requests fail closed and use a 5 second timeout by default.
 
+## Install
+
+Install the package from npm:
+
+```bash
+npm install @lizflow/license
+```
+
+The same release is also published to GitHub Packages as `@nebur242/lizflow-license`. GitHub Packages requires authentication, including for public packages. Add the registry mapping to your project's `.npmrc`, authenticate with a token that has `read:packages`, and install the GitHub alias:
+
+```ini
+@nebur242:registry=https://npm.pkg.github.com
+```
+
+```bash
+npm install @nebur242/lizflow-license
+```
+
+When using the GitHub Packages alias, import from `@nebur242/lizflow-license` (or `@nebur242/lizflow-license/browser`) instead of the npm package name used in the examples below.
+
 ## Developer setup contract
 
 1. Create or open a deployment in LizFlow.
