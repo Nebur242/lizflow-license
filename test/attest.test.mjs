@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, mkdir, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, symlink, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -81,12 +81,18 @@ test("manifest hash frames paths and content unambiguously", async () => {
   assert.notEqual(first, second);
 });
 
-test("attestation rejects symlinks", async () => {
+test("attestation hashes symlink metadata without following the target", async () => {
   await withTempDir(async (dir) => {
-    await writeFile(join(dir, "target.js"), "console.log('target');");
-    await symlink(join(dir, "target.js"), join(dir, "linked.js"));
+    const routeDirectory = join(dir, "functions", "[locale]", "admin", "categories", "[id]");
+    const link = join(routeDirectory, "edit.rsc.func");
+    await mkdir(routeDirectory, { recursive: true });
+    await symlink("../../../../shared/route-a.func", link);
+    const firstHash = await manifestHash(".");
 
-    await assert.rejects(() => manifestHash("."), /Refusing to attest symlink/);
+    await unlink(link);
+    await symlink("../../../../shared/route-b.func", link);
+
+    assert.notEqual(await manifestHash("."), firstHash);
   });
 });
 

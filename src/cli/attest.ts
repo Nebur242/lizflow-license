@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { lstat, readdir, readFile, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, readlink, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,11 +58,18 @@ export async function manifestHash(root: string) {
       }
       const info = await lstat(path);
       if (info.isSymbolicLink()) {
-        throw new Error(`Refusing to attest symlink: ${relativePath}`);
-      }
-      if (info.isDirectory()) await visit(path);
-      else {
-        hashManifestFile(hash, relativePath, await readFile(path));
+        hashManifestEntry(
+          hash,
+          "symlink:v1",
+          relativePath,
+          Buffer.from(await readlink(path)),
+        );
+      } else if (info.isDirectory()) {
+        await visit(path);
+      } else if (info.isFile()) {
+        hashManifestEntry(hash, "file:v1", relativePath, await readFile(path));
+      } else {
+        throw new Error(`Unsupported build artifact entry: ${relativePath}`);
       }
     }
   }
@@ -70,8 +77,9 @@ export async function manifestHash(root: string) {
   return `sha256:${hash.digest("hex")}`;
 }
 
-function hashManifestFile(
+function hashManifestEntry(
   hash: ReturnType<typeof createHash>,
+  type: "file:v1" | "symlink:v1",
   path: string,
   content: Uint8Array,
 ) {
@@ -81,7 +89,7 @@ function hashManifestFile(
   pathLength.writeBigUInt64BE(BigInt(pathBytes.byteLength));
   contentLength.writeBigUInt64BE(BigInt(content.byteLength));
 
-  hash.update("file:v1");
+  hash.update(type);
   hash.update(pathLength);
   hash.update(pathBytes);
   hash.update(contentLength);
