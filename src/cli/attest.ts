@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -161,7 +162,16 @@ function required(name: string) {
   return value;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+export function isDirectExecution(entrypoint = process.argv[1]) {
+  if (!entrypoint) return false;
+  try {
+    return realpathSync(entrypoint) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectExecution()) {
   main().catch((error) => {
     process.stderr.write(
       `${error instanceof Error ? error.message : String(error)}\n`,

@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, rm, mkdir, symlink, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import test from "node:test";
 
-import { manifestHash, resolveBuildDirectory } from "../dist/cli/attest.js";
+import {
+  isDirectExecution,
+  manifestHash,
+  resolveBuildDirectory,
+} from "../dist/cli/attest.js";
+
+const execFileAsync = promisify(execFile);
 
 test("attest CLI defaults to dist when no build directory is passed", async () => {
   await withTempDir(async (dir) => {
@@ -77,6 +87,67 @@ test("attestation rejects symlinks", async () => {
     await symlink(join(dir, "target.js"), join(dir, "linked.js"));
 
     await assert.rejects(() => manifestHash("."), /Refusing to attest symlink/);
+  });
+});
+
+test("attest CLI executes through an npm-style bin symlink", async () => {
+  await withTempDir(async (dir) => {
+    const buildDirectory = join(dir, "build-output");
+    const binPath = join(dir, "lizflow-license");
+    const cliPath = fileURLToPath(new URL("../dist/cli/attest.js", import.meta.url));
+    await mkdir(buildDirectory);
+    await writeFile(join(buildDirectory, "app.js"), "console.log('built');");
+    await symlink(cliPath, binPath);
+
+    assert.equal(isDirectExecution(binPath), true);
+
+    let received;
+    const server = createServer((request, response) => {
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        received = {
+          authorization: request.headers["x-lizflow-deployment-secret"],
+          body: JSON.parse(body),
+        };
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ accepted: true }));
+      });
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const address = server.address();
+      assert(address && typeof address === "object");
+      const result = await execFileAsync(process.execPath, [binPath, "attest", buildDirectory], {
+        env: {
+          ...process.env,
+          LIZFLOW_API_URL: `http://127.0.0.1:${address.port}`,
+          LIZFLOW_DEPLOYMENT_ID: "deployment-test",
+          LIZFLOW_DEPLOYMENT_SECRET: "deployment-secret",
+          GITHUB_SHA: "commit-sha",
+          GITHUB_RUN_ID: "workflow-run",
+          GITHUB_REPOSITORY: "lizflow/example",
+          ENVIRONMENT: "production",
+        },
+      });
+
+      assert.deepEqual(JSON.parse(result.stdout), { accepted: true });
+      assert.equal(received.authorization, "deployment-secret");
+      assert.equal(received.body.deploymentId, "deployment-test");
+      assert.equal(received.body.commitSha, "commit-sha");
+      assert.equal(received.body.workflowRunId, "workflow-run");
+      assert.equal(received.body.repository, "lizflow/example");
+      assert.equal(received.body.environment, "production");
+      assert.match(received.body.manifestHash, /^sha256:[a-f0-9]{64}$/);
+    } finally {
+      await new Promise((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 });
 
