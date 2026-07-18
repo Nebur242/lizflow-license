@@ -11,6 +11,7 @@ import test from "node:test";
 import {
   isDirectExecution,
   manifestHash,
+  normalizeAttestationResponse,
   resolveBuildDirectory,
 } from "../dist/cli/attest.js";
 
@@ -96,6 +97,35 @@ test("attestation hashes symlink metadata without following the target", async (
   });
 });
 
+test("attestation response normalization supports API envelopes", () => {
+  assert.deepEqual(
+    normalizeAttestationResponse({
+      success: true,
+      statusCode: 202,
+      data: {
+        accepted: true,
+        attestationId: "attestation-1",
+        deploymentId: "deployment-1",
+      },
+    }),
+    {
+      accepted: true,
+      attestationId: "attestation-1",
+      deploymentId: "deployment-1",
+    },
+  );
+});
+
+test("attestation response normalization keeps direct responses compatible", () => {
+  assert.deepEqual(normalizeAttestationResponse({ accepted: true }), {
+    accepted: true,
+  });
+  assert.throws(
+    () => normalizeAttestationResponse({ data: { status: "ok" } }),
+    /invalid response/,
+  );
+});
+
 test("attest CLI executes through an npm-style bin symlink", async () => {
   await withTempDir(async (dir) => {
     const buildDirectory = join(dir, "build-output");
@@ -120,7 +150,13 @@ test("attest CLI executes through an npm-style bin symlink", async () => {
           body: JSON.parse(body),
         };
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ accepted: true }));
+        response.end(
+          JSON.stringify({
+            success: true,
+            statusCode: 202,
+            data: { accepted: true },
+          }),
+        );
       });
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

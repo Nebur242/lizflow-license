@@ -121,7 +121,25 @@ export async function main() {
   });
   if (!response.ok)
     throw new Error(`LizFlow attestation failed (${response.status})`);
-  process.stdout.write(`${JSON.stringify(await response.json())}\n`);
+  const result = normalizeAttestationResponse(await response.json());
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+}
+
+/**
+ * Normalize both the public CLI response and the API's standard response envelope.
+ * This keeps workflow consumers independent from the server's transport wrapper.
+ */
+export function normalizeAttestationResponse(
+  payload: unknown,
+): Record<string, unknown> & { accepted: boolean } {
+  const candidate =
+    isRecord(payload) && isRecord(payload.data) ? payload.data : payload;
+
+  if (!isRecord(candidate) || typeof candidate.accepted !== "boolean") {
+    throw new Error("LizFlow attestation returned an invalid response");
+  }
+
+  return candidate as Record<string, unknown> & { accepted: boolean };
 }
 
 export async function resolveBuildDirectory(requested?: string) {
@@ -168,6 +186,10 @@ function required(name: string) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
   return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function isDirectExecution(entrypoint = process.argv[1]) {

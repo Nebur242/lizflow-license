@@ -4,6 +4,11 @@
 
 - Publish each workflow release to GitHub Packages as `@nebur242/lizflow-license` in addition to npm.
 
+## 0.2.10
+
+- Normalize wrapped attestation API responses so the CLI always emits a stable
+  top-level `accepted` result for CI consumers.
+
 ## 0.1.0
 
 - Added signed LizFlow runtime lease verification.
