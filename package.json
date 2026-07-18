@@ -1,6 +1,6 @@
 {
   "name": "@lizflow/license",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "LizFlow runtime entitlement, lease, and workflow attestation SDK",
   "license": "MIT",
   "repository": {
